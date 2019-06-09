@@ -1,0 +1,18 @@
+server:
+  port: 8080
+  servlet:
+    context-path: /app
+
+spring:
+  datasource:
+    url: jdbc:sqlserver://localhost:1433;database=SM;integratedSecurity=true;
+    driver-class-name: com.microsoft.sqlserver.jdbc.SQLServerDriver
+  jpa:
+    properties:
+      hibernate.show_sql: true
+
+# logs the SQL statements
+log4j.logger.org.hibernate.SQL: debug
+  # Logs the JDBC parameters passed to a query
+log4j.logger.org.hibernate.type: trace
+
