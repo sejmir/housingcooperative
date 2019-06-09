@@ -23,10 +23,11 @@ import java.util.Optional;
 
 public class BasicAuthHeaderFilter extends RequestHeaderAuthenticationFilter {
     static final List<String> SECURED_PATH_MATCHERS = List.of(
+            "/flats/*/tenants",
             "/users",
             "/users/**"
     );
-    private static final String BASIC_PREFIX = "basic ";
+    public static final String BASIC_PREFIX = "basic ";
     private UserRepository userRepository;
 
     public BasicAuthHeaderFilter(UserRepository userRepository) {
@@ -56,7 +57,7 @@ public class BasicAuthHeaderFilter extends RequestHeaderAuthenticationFilter {
                 Optional<User> userOpt = getAuthenticatedUser(values[0], values[1]);
                 authenticationToken = userOpt.isPresent()
                         ? new UsernamePasswordAuthenticationToken(userOpt.get(), "", userOpt.get().getAuthorities())
-                        : new UsernamePasswordAuthenticationToken(null, "");
+                        : null;
             }
         }
 

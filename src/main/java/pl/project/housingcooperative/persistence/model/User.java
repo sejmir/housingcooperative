@@ -6,6 +6,7 @@ import lombok.ToString;
 import lombok.experimental.Tolerate;
 import org.springframework.security.core.GrantedAuthority;
 import org.springframework.security.core.authority.SimpleGrantedAuthority;
+import org.springframework.security.core.userdetails.UserDetails;
 
 import javax.persistence.*;
 import java.util.Collection;
@@ -16,10 +17,10 @@ import java.util.List;
 @Builder
 @Getter
 @ToString
-public class User {
+public class User implements UserDetails {
     @Id
     @Column(name = "id_U")
-    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @GeneratedValue(strategy = GenerationType.TABLE)
     private Long id;
     @Column(name = "Name")
     private String firstName;
@@ -42,8 +43,34 @@ public class User {
         //required by JPA
     }
 
+    @Override
     public Collection<? extends GrantedAuthority> getAuthorities() {
         return List.of(new SimpleGrantedAuthority(userType.name()));
+    }
+
+    @Override
+    public String getUsername() {
+        return this.mail;
+    }
+
+    @Override
+    public boolean isAccountNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isAccountNonLocked() {
+        return true;
+    }
+
+    @Override
+    public boolean isCredentialsNonExpired() {
+        return true;
+    }
+
+    @Override
+    public boolean isEnabled() {
+        return true;
     }
 
     public boolean hasAuthority(String authority){

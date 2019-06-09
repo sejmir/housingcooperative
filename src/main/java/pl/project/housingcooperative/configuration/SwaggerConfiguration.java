@@ -27,6 +27,7 @@ public class SwaggerConfiguration{
                 )
                 .ignoredParameterTypes(AuthenticationPrincipal.class)
                 .select().apis(RequestHandlerSelectors.withClassAnnotation(RestController.class))
+                .paths(PathSelectors.any())
                 .build();
 
     }

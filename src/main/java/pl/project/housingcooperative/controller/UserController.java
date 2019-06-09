@@ -11,12 +11,10 @@ import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 import pl.project.housingcooperative.controller.model.CreateUserRequest;
 import pl.project.housingcooperative.controller.model.UserDTO;
-import pl.project.housingcooperative.persistence.model.Flat;
 import pl.project.housingcooperative.persistence.model.User;
 import pl.project.housingcooperative.persistence.repository.UserRepository;
 
 import java.util.List;
-import java.util.stream.Collector;
 import java.util.stream.Collectors;
 
 @RestController
