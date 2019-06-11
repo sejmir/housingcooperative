@@ -17,12 +17,12 @@ public class Flat {
 
     @Id
     @Column(name = "id_F")
-    @GeneratedValue(strategy = GenerationType.TABLE)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
     @Column(name = "Address")
     private String address;
     @Column(name = "Living_area")
-    private String area;
+    private Integer area;
     @ManyToOne
     @JoinColumn(name = "user_id", nullable = false)
     private User owner;

@@ -16,12 +16,12 @@ import javax.persistence.*;
 public class Tenant {
     @Id
     @Column(name = "id_T")
-    @GeneratedValue(strategy = GenerationType.TABLE)
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private long id;
     @Column(name = "Name")
     private String firstName;
     @Column(name = "Surname")
-    private String secondName;
+    private String lastName;
     @Column(name = "Phone")
     private String phone;
     @Column(name = "Mail")

@@ -23,9 +23,10 @@ import java.util.Optional;
 
 public class BasicAuthHeaderFilter extends RequestHeaderAuthenticationFilter {
     static final List<String> SECURED_PATH_MATCHERS = List.of(
-            "/flats/*/tenants",
             "/users",
-            "/users/**"
+            "/users/**",
+            "/currentUser",
+            "/currentUser/**"
     );
     public static final String BASIC_PREFIX = "basic ";
     private UserRepository userRepository;
