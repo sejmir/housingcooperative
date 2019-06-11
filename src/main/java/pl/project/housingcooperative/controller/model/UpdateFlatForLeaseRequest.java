@@ -8,9 +8,9 @@ import javax.validation.constraints.Positive;
 
 @Getter
 @ToString
-public class UpdateFlatForSaleRequest {
+public class UpdateFlatForLeaseRequest {
     @Positive
-    private int sellPrice;
+    private Integer monthPrice;
     @NotBlank
     private String description;
 }

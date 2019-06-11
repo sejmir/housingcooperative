@@ -8,6 +8,8 @@ import org.springframework.security.access.prepost.PreAuthorize;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.web.bind.annotation.*;
 import pl.project.housingcooperative.controller.model.*;
+import pl.project.housingcooperative.exception.ForbiddenException;
+import pl.project.housingcooperative.exception.ResourceNotFoundException;
 import pl.project.housingcooperative.persistence.model.Flat;
 import pl.project.housingcooperative.persistence.model.FlatForLease;
 import pl.project.housingcooperative.persistence.model.FlatForSale;
@@ -37,15 +39,17 @@ public class UserController {
 
     @GetMapping
     @PreAuthorize("hasAuthority('ADMINISTRATOR')")
-    public List<UserDTO> getAll(@AuthenticationPrincipal User user) {
-        return userRepository.findAll().stream()
+    public ResponseEntity getAll(@AuthenticationPrincipal User user) {
+        List<UserDTO> users = userRepository.findAll().stream()
                 .map(UserDTO::new)
                 .collect(Collectors.toList());
+
+        return ResponseEntity.ok(users);
     }
 
     @PostMapping
     @PreAuthorize("hasAuthority('ADMINISTRATOR')")
-    public UserDTO create(@RequestBody CreateUserRequest createUserRequest) {
+    public ResponseEntity create(@RequestBody CreateUserRequest createUserRequest) {
         User u = User.builder()
                 .firstName(createUserRequest.getFirstName())
                 .lastName(createUserRequest.getLastName())
@@ -56,75 +60,94 @@ public class UserController {
                 .userType(createUserRequest.getUserType())
                 .build();
 
-        return new UserDTO(userRepository.save(u));
+        return ResponseEntity.ok(new UserDTO(userRepository.save(u)));
     }
 
-    @PostMapping("/{id}/flats")
+    @PostMapping("/{userId}/flats")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity createFlat(
-            @RequestParam long id,
+            @PathVariable long userId,
             @RequestBody CreateFlatRequest request,
-            @AuthenticationPrincipal User authenitcated) {
+            @AuthenticationPrincipal User authenticated) {
 
-         if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                     .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-         }
-         Optional<User> userOpt = userRepository.findById(id);
-         if (userOpt.isEmpty()) {
-             return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                     .of("error", "nie znaleziono użytkownika"));
-         }
-         Flat flat = Flat.builder()
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        Flat flat = Flat.builder()
                 .address(request.getAddress())
                 .area(request.getArea())
-                .owner(userOpt.get())
+                .owner(user)
                 .build();
         Flat savedFlat = flatRepository.save(flat);
 
         return ResponseEntity.ok(new FlatDTO(savedFlat));
     }
 
-    @GetMapping("/{id}/flats")
+    @GetMapping("/{userId}/flats")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity getCurrentUserFlats(
-            @RequestParam long id,
-            @AuthenticationPrincipal User authenitcated) {
+            @PathVariable long userId,
+            @AuthenticationPrincipal User authenticated) {
 
-        if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
-        List<FlatDTO> flats = flatRepository.findByOwner(authenitcated).stream()
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        List<FlatDTO> flats = flatRepository.findByOwner(user).stream()
                 .map(FlatDTO::new)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(flats);
     }
 
-
-    @PostMapping("/{id}/flatsForSale")
+    @PutMapping("/{userId}/flats/{flatId}")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
-    public ResponseEntity createFlatForSale(@RequestBody @Valid CreateFlatForSaleRequest request, @AuthenticationPrincipal User authenticated,@RequestParam long id) {
-        if (!authenticated.hasAuthority("ADMINISTRATOR") && !authenticated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
+    public ResponseEntity updateFlat(
+            @PathVariable long userId,
+            @PathVariable long flatId,
+            @RequestBody UpdateFlatRequest request,
+            @AuthenticationPrincipal User authenticated) {
+
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        Optional<Flat> flatOpt = flatRepository.findById(flatId).stream()//cosik się tu zjebało bo nie chce edytować
+                .filter(f -> f.hasOwner(user))
+                .findAny();
+
+        if (flatOpt.isEmpty()) {
+            throw new ResourceNotFoundException("nie znaleziono");
         }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
+        Flat flat = flatOpt.get();
+        if (request.getAddress() != null) {
+            flat.setAddress(request.getAddress());
         }
+        if (request.getArea() != null) {
+            flat.setArea(request.getArea());
+        }
+        if (request.getOwnerId() != null) {
+            if (!authenticated.hasAuthority("ADMINISTRATOR")) {
+                throw new ForbiddenException("Tylko administrator może zmieniać właściciela mieszkania");
+            }
+            User newOwner = userRepository.findById(request.getOwnerId())
+                        .orElseThrow(() -> new IllegalArgumentException("Nie ma użytkownika z id " + request.getOwnerId()));
+            flat.setOwner(newOwner);
+        }
+
+
+        return ResponseEntity.ok(new FlatDTO(flatRepository.save(flat)));
+    }
+
+    @PostMapping("/{userId}/flatsForSale")
+    @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
+    public ResponseEntity createFlatForSale(
+            @RequestBody @Valid CreateFlatForSaleRequest request,
+            @AuthenticationPrincipal User authenticated,
+            @PathVariable long userId) {
+
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
         Optional<Flat> flatOpt = flatRepository.findById(request.getFlatId());
 
         if (flatOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "nie ma mieszkania z tym flatID"));
+            throw new IllegalArgumentException("nie ma mieszkania z tym flatID");
         }
-        if (!flatOpt.get().hasOwner(authenticated)) {
+        if (!flatOpt.get().hasOwner(user)) {
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "nie masz uprawnień do wykonywania zmian na tym mieszkaniu"));
         }
         if (saleRepository.existsByFlat(flatOpt.get())) {
@@ -141,101 +164,81 @@ public class UserController {
         return ResponseEntity.ok(new FlatForSaleDTO(savedFlatForSale));
     }
 
-    @PutMapping("/{id}/flatsForSale/{flatId}")
+    @PutMapping("/{userId}/flatsForSale/{flatId}")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity updateFlatForSale(
-            @RequestParam long id,
-            @RequestParam long flatId,
+            @PathVariable long userId,
+            @PathVariable long flatId,
             @RequestBody UpdateFlatForSaleRequest request,
-            @AuthenticationPrincipal User authenitcated) {
+            @AuthenticationPrincipal User authenticated) {
 
-        if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
-        Optional <FlatForSale> flatForSaleOpt = saleRepository.findByFlatOwner(authenitcated).stream()//cosik się tu zjebało bo nie chce edytować
-                .filter(f -> f.getFlatId() == flatId)
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        Optional<FlatForSale> flatForSaleOpt = saleRepository.findById(flatId).stream()//cosik się tu zjebało bo nie chce edytować
+                .filter(f -> f.getFlat().hasOwner(user))
                 .findAny();
 
         if (flatForSaleOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "nie znaleziono"));
+            throw new ResourceNotFoundException("nie znaleziono");
         }
+        FlatForSale flatForSale = flatForSaleOpt.get();
 
-        flatForSaleOpt.get().setDescription(request.getDescription());
-        flatForSaleOpt.get().setSellPrice(request.getSellPrice());
-
-        return ResponseEntity.ok(new FlatForSaleDTO(saleRepository.save(flatForSaleOpt.get())));
+        if (request.getDescription() != null) {
+            flatForSale.setDescription(request.getDescription());
+        }
+        if (request.getSellPrice() != null) {
+            flatForSale.setSellPrice(request.getSellPrice());
+        }
+        return ResponseEntity.ok(new FlatForSaleDTO(saleRepository.save(flatForSale)));
     }
 
-    @GetMapping("/{id}/flatsForSale")
+    @GetMapping("/{userId}/flatsForSale")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity getCurrentUserFlatsForSale(
-            @RequestParam long id,
-            @AuthenticationPrincipal User authenitcated) {
+            @PathVariable long userId,
+            @AuthenticationPrincipal User authenticated) {
 
-        if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
-        List<FlatForSaleDTO> flats = saleRepository.findByFlatOwner(authenitcated).stream()
+        checkPrivileges(userId, authenticated);
+
+        User user = getRequestedUser(userId);
+        List<FlatForSaleDTO> flats = saleRepository.findByFlatOwner(user).stream()
                 .map(FlatForSaleDTO::new)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(flats);
     }
 
-    @GetMapping("/{id}/flatsForSale/{flatId}")
+    @GetMapping("/{userId}/flatsForSale/{flatId}")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity getCurrentUserFlatForSale(
-            @RequestParam long id,
-            @RequestParam long flatId,
-            @AuthenticationPrincipal User authenitcated) {
+            @PathVariable long userId,
+            @PathVariable long flatId,
+            @AuthenticationPrincipal User authenticated) {
 
-        if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
-        Optional <FlatForSaleDTO> flatForSaleOpt = saleRepository.findByFlatOwner(authenitcated).stream()
-                .filter(f -> f.getFlatId() == flatId)
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        Optional<FlatForSaleDTO> flatForSaleOpt = saleRepository.findById(flatId).stream()
+                .filter(f -> f.getFlat().hasOwner(user))
                 .map(FlatForSaleDTO::new)
                 .findAny();
 
-        return flatForSaleOpt.map(flat -> (ResponseEntity)ResponseEntity.ok(flat))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "nie znaleziono")));
+        return flatForSaleOpt.map(flat -> (ResponseEntity) ResponseEntity.ok(flat))
+                .orElseThrow(() -> new ResourceNotFoundException("nie znaleziono"));
     }
 
-    @PostMapping("/{id}/flatsForLease")
+    @PostMapping("/{userId}/flatsForLease")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
-    public ResponseEntity createFlatForLease(@RequestBody @Valid CreateFlatForLeaseRequest request, @AuthenticationPrincipal User authenticated,@RequestParam long id) {
+    public ResponseEntity createFlatForLease(
+            @RequestBody @Valid CreateFlatForLeaseRequest request,
+            @AuthenticationPrincipal User authenticated,
+            @PathVariable long userId) {
 
-        if (!authenticated.hasAuthority("ADMINISTRATOR") && !authenticated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
         Optional<Flat> flatOpt = flatRepository.findById(request.getFlatId());
         if (flatOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(Map.of("error", "nie ma mieszkania z tym flatID"));
+            throw new IllegalArgumentException("nie ma mieszkania z tym flatID");
         }
-        if (!flatOpt.get().hasOwner(authenticated)) {// dodałem negacje !
+        if (!flatOpt.get().hasOwner(user)) {// dodałem negacje !
             return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map.of("error", "nie masz uprawnień do wykonywania zmian na tym mieszkaniu"));
         }
         if (leaseRepository.existsByFlat(flatOpt.get())) {
@@ -251,52 +254,78 @@ public class UserController {
         return ResponseEntity.ok(new FlatForLeaseDTO(savedFlatForLease));
     }
 
-    @GetMapping("/{id}/flatsForLease")
+    @GetMapping("/{userId}/flatsForLease")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity getCurrentUserFlatsForLease(
-            @RequestParam long id,
-            @AuthenticationPrincipal User authenitcated) {
+            @PathVariable long userId,
+            @AuthenticationPrincipal User authenticated) {
 
-        if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
-        List<FlatForLeaseDTO> flats = leaseRepository.findByFlatOwner(authenitcated).stream()
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        List<FlatForLeaseDTO> flats = leaseRepository.findByFlatOwner(user).stream()
                 .map(FlatForLeaseDTO::new)
                 .collect(Collectors.toList());
         return ResponseEntity.ok(flats);
     }
 
-    @GetMapping("/{id}/flatsForLease/{flatId}")
+    @GetMapping("/{userId}/flatsForLease/{flatId}")
     @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
     public ResponseEntity getCurrentUserFlatForLease(
-            @RequestParam long id,
-            @RequestParam long flatId,
-            @AuthenticationPrincipal User authenitcated) {
+            @PathVariable long userId,
+            @PathVariable long flatId,
+            @AuthenticationPrincipal User authenticated) {
 
-        if (!authenitcated.hasAuthority("ADMINISTRATOR") && !authenitcated.getId().equals(id)) {
-            return ResponseEntity.status(HttpStatus.FORBIDDEN).body(Map
-                    .of("error", "nie masz uprawnień do zmiany tego zasobu"));
-        }
-        Optional<User> userOpt = userRepository.findById(id);
-        if (userOpt.isEmpty()) {
-            return ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map
-                    .of("error", "nie znaleziono użytkownika"));
-        }
-        Optional <FlatForLeaseDTO> flatForLeaseOpt = leaseRepository.findByFlatOwner(authenitcated).stream()
-                .filter(f -> f.getFlatId() == flatId)
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        Optional<FlatForLeaseDTO> flatForLeaseOpt = leaseRepository.findById(flatId).stream()
+                .filter(f -> f.getFlat().hasOwner(user))
                 .map(FlatForLeaseDTO::new)
                 .findAny();
 
-        return flatForLeaseOpt.map(flat -> (ResponseEntity)ResponseEntity.ok(flat))
-                .orElseGet(() -> ResponseEntity.status(HttpStatus.NOT_FOUND).body(Map.of("error", "nie znaleziono")));
+        return flatForLeaseOpt.map(flat -> (ResponseEntity) ResponseEntity.ok(flat))
+                .orElseThrow(() -> new ResourceNotFoundException("nie znaleziono"));
     }
 
+    @PutMapping("/{userId}/flatsForLease/{flatId}")
+    @PreAuthorize("hasAuthority('OWNER') OR hasAuthority('ADMINISTRATOR')")
+    public ResponseEntity updateFlatForLease(
+            @PathVariable long userId,
+            @PathVariable long flatId,
+            @RequestBody UpdateFlatForLeaseRequest request,
+            @AuthenticationPrincipal User authenticated) {
 
+        checkPrivileges(userId, authenticated);
+        User user = getRequestedUser(userId);
+        Optional<FlatForLease> flatForLeaseOpt = leaseRepository.findById(flatId).stream()//cosik się tu zjebało bo nie chce edytować
+                .filter(f -> f.getFlat().hasOwner(user))
+                .findAny();
 
+        if (flatForLeaseOpt.isEmpty()) {
+            throw new ResourceNotFoundException("nie znaleziono");
+        }
+        FlatForLease flatForLease = flatForLeaseOpt.get();
+
+        if (request.getDescription() != null) {
+            flatForLease.setDescription(request.getDescription());
+        }
+        if (request.getMonthPrice() != null) {
+            flatForLease.setMonth(request.getMonthPrice());
+        }
+
+        return ResponseEntity.ok(new FlatForLeaseDTO(leaseRepository.save(flatForLease)));
+    }
+
+    private void checkPrivileges(long userId, @AuthenticationPrincipal User authenticated) {
+        if (!authenticated.hasAuthority("ADMINISTRATOR") && !authenticated.getId().equals(userId)) {
+            throw new ForbiddenException("nie masz uprawnień do zmiany tego zasobu");
+        }
+    }
+
+    private User getRequestedUser(long userId) {
+        Optional<User> userOpt = userRepository.findById(userId);
+        if (userOpt.isEmpty()) {
+            throw new ResourceNotFoundException("nie znaleziono użytkownika");
+        }
+        return userOpt.get();
+    }
 }

@@ -6,13 +6,12 @@ import pl.project.housingcooperative.persistence.model.Flat;
 import pl.project.housingcooperative.persistence.model.FlatForLease;
 import pl.project.housingcooperative.persistence.model.User;
 
-import java.util.Optional;
+import java.util.List;
 
 @Repository
 public interface LeaseRepository extends JpaRepository<FlatForLease,Long> {
 
-
     boolean existsByFlat(Flat flat);
 
-    Optional<FlatForLease> findByFlatOwner(User owner);
+    List<FlatForLease> findByFlatOwner(User owner);
 }

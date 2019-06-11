@@ -10,7 +10,7 @@ import javax.validation.constraints.Positive;
 @ToString
 public class UpdateFlatForSaleRequest {
     @Positive
-    private int sellPrice;
+    private Integer sellPrice;
     @NotBlank
     private String description;
 }
