@@ -37,13 +37,13 @@ public class FlatForSaleController {
     }
 
     @GetMapping
-    public List<FlatForSaleDTO> getAll() {
-        return saleRepository.findAll().stream()
+    public ResponseEntity getAll() {
+        List<FlatForSaleDTO> flats =  saleRepository.findAll().stream()
                 .map(FlatForSaleDTO::new)
                 .collect(Collectors.toList());
+
+        return ResponseEntity.ok(flats);
     }
-
-
 
     @GetMapping("/{id}")
     public ResponseEntity getByFlatId(@PathVariable long id) {

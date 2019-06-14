@@ -32,11 +32,18 @@ public class FlatForLeaseController {
         this.tenantRepository = tenantRepository;
     }
 
-    @GetMapping
+   /* @GetMapping
     public List<FlatForLeaseDTO> getAll() {
         return leaseRepository.findAll().stream()
                 .map(FlatForLeaseDTO::new)
                 .collect(Collectors.toList());
+    }*/
+    @GetMapping
+    public ResponseEntity getAll(){
+        List<FlatForLeaseDTO> leases = leaseRepository.findAll().stream()
+                .map(FlatForLeaseDTO::new)
+                .collect(Collectors.toList());
+        return ResponseEntity.ok(leases);
     }
 
     @GetMapping("/{id}")

@@ -28,9 +28,14 @@ public class FlatsController {
         this.tenantRepository = tenantRepository;
     }
 
-    @GetMapping
+  /*  @GetMapping
     public List<Flat> getAll() {
         return flatRepository.findAll();
+    }*/
+    @GetMapping
+    public ResponseEntity getAll(){
+        List<Flat> flats = flatRepository.findAll();
+        return ResponseEntity.ok(flats);
     }
 
     @GetMapping("/{id}")
@@ -57,6 +62,8 @@ public class FlatsController {
         }
 
         return ResponseEntity.ok(tenantRepository.findAllByFlat(flat));
+
     }
+
 
 }

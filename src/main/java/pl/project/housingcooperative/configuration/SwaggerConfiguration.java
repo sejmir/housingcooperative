@@ -28,7 +28,7 @@ public class SwaggerConfiguration{
                         new ApiInfoBuilder()
                                 .termsOfServiceUrl(null)
                                 .version("1.0.0")
-                                .title("społdzielnia mieszkaniowa wita i żegna ")
+                                .title("społdzielnia mieszkaniowa wita :)")
                                 .build()
                 )
                 .ignoredParameterTypes(AuthenticationPrincipal.class)
